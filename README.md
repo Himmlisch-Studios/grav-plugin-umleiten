@@ -91,7 +91,7 @@ return [
     Route::get('/app/signup', function () {
         return View::make('signup');
     }),
-    Route::post('/app/signup', [AuthController::class, 'login']),
+    Route::post('/app/signup', [AuthController::class, 'register']),
 
     Route::get('/app/teams/create', [TeamController::class, 'create']),
     Route::post('/app/teams/create', [TeamController::class, 'store']),

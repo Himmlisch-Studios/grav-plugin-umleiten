@@ -1,0 +1,32 @@
+name: Umleiten
+slug: umleiten
+type: plugin
+version: 1.0.0
+description: Create custom routes for your pages and plugins
+icon: reply
+author:
+  name: Himmlisch Web
+  email: web@himmlisch.com.mx
+homepage: https://github.com/Himmlisch-Studios/grav-plugin-umleiten
+keywords: grav, plugin, route, routing, router, mvc
+bugs: https://github.com/Himmlisch-Studios/grav-plugin-umleiten/issues
+docs: https://github.com/Himmlisch-Studios/grav-plugin-umleiten/blob/master/README.md
+license: MIT
+
+dependencies:
+  - { name: grav, version: '>=1.7.0' }
+
+form:
+  validation: loose
+  fields:
+    enabled:
+      type: toggle
+      label: PLUGIN_ADMIN.PLUGIN_STATUS
+      highlight: 1
+      default: 0
+      options:
+        1: PLUGIN_ADMIN.ENABLED
+        0: PLUGIN_ADMIN.DISABLED
+      validate:
+        type: bool
+  

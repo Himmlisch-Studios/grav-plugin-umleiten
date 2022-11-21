@@ -132,4 +132,4 @@ class AuthMiddleware extends Middleware
 
 ## Need a website?
 
-We at [Himmlisch Web](https://web.himmlisch.com.mx), want you to help connect your brand and your customers, by creating a perfeclty tailored website that improves productivity and speaks for your business and values. [Contact us!](https://himmlisch.com.mx/contact).
+We at [Himmlisch Web](https://web.himmlisch.com.mx), want you to help connect your brand and your customers, by creating a perfectly tailored website that improves productivity and speaks for your business and values. [Contact us!](https://himmlisch.com.mx/contact).

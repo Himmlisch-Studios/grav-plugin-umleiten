@@ -1,9 +1,9 @@
 {
-  "name": "himmlisch-web/umleiten",
+  "name": "himmlisch-studios/umleiten",
   "type": "grav-plugin",
   "description": "Create custom routes for your pages and plugins",
   "keywords": ["plugin"],
-  "homepage": "https://github.com/himmlisch-web/grav-plugin-umleiten",
+  "homepage": "https://github.com/himmlisch-studios/grav-plugin-umleiten",
   "license": "MIT",
   "authors": [
     {

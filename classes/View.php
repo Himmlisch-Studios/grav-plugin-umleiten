@@ -33,7 +33,7 @@ class View
             true
         );
 
-        $page = new Page();
+        $page = self::newPage();
 
         /** @var Pages */
         $pages = Grav::instance()['pages'];
@@ -74,7 +74,7 @@ class View
 
     public static function error()
     {
-        $page = new Page();
+        $page = self::newPage();
         $page->init(
             new \SplFileInfo(
                 Grav::instance()['locator']->findResource(
@@ -87,20 +87,47 @@ class View
         return $page;
     }
 
+    public static function json(string|array $content)
+    {
+        $content = is_array($content) ? json_encode($content) : $content;
+
+        $page = self::newPage();
+        $page->templateFormat('json');
+        $page->template('default');
+        $page->setRawContent($content);
+
+        $page->init(self::defaultFile());
+
+        return $page;
+    }
+
     public static function redirect($route): Page
     {
-        $page = new Page();
+        $page = self::newPage();
         $page->redirect($route);
-        $page->init(
-            new \SplFileInfo(
-                Grav::instance()['locator']->findResource(
-                    static::fileFinder('default.md', ['theme://pages']),
-                    true,
-                    true
-                )
+        $page->init(self::defaultFile());
+        return $page;
+    }
+
+    public static function newPage(): Page
+    {
+        $page = new Page;
+        $page->cacheControl(0);
+        $page->eTag(0);
+        $page->expires(0);
+
+        return $page;
+    }
+
+    public static function defaultFile()
+    {
+        return new \SplFileInfo(
+            Grav::instance()['locator']->findResource(
+                static::fileFinder('default.md', ['theme://pages', 'plugins://umleiten/pages']),
+                true,
+                true
             )
         );
-        return $page;
     }
 
     private static function generateSlug(string $string)

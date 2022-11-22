@@ -63,13 +63,10 @@ class Router
             return;
         }
 
-        /** @var Pages */
-        $pages = $router->grav['pages'];
-
         $page = $found_route->boot();
 
         if ($page instanceof PageInterface) {
-            $pages->addPage($page, $path);
+            Grav::instance()['pages']->addPage($page, $path);
         }
     }
 }

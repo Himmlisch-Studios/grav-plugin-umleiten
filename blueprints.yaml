@@ -9,8 +9,8 @@ author:
   email: web@himmlisch.com.mx
 homepage: https://github.com/Himmlisch-Studios/grav-plugin-umleiten
 keywords: grav, plugin, route, routing, router, mvc
-bugs: https://github.com/Himmlisch-Studios/grav-plugin-umleiten/issues
-docs: https://github.com/Himmlisch-Studios/grav-plugin-umleiten/blob/master/README.md
+bugs: https://himmlisch.com.mx/contact
+docs: https://docs.himmlisch.com.mx/umleiten
 license: MIT
 
 dependencies:

@@ -44,7 +44,7 @@ class Route
         $original = $request = $this->grav['request'];
         $request = $this->proccessMiddlewares($request, $this->middlewares);
 
-        if ($original === $request) {
+        if ($request instanceof $original) {
             return $this->bootFunctionArray($this->controllers, $request);
         }
 

@@ -4,6 +4,7 @@ namespace Grav\Plugin\Umleiten;
 
 use Exception;
 use Grav\Common\Grav;
+use Nyholm\Psr7\ServerRequest;
 
 class Route
 {
@@ -21,7 +22,7 @@ class Route
 
     public static function make(string $path): self
     {
-        return new static($path);
+        return Router::instance()->add(new static($path));
     }
 
     public static function get($path, array|string|Controller|callable $controllers): self
@@ -40,7 +41,29 @@ class Route
 
     public function boot(): mixed
     {
-        return $this->bootFunctionArray($this->middlewares) ?? $this->bootFunctionArray($this->controllers);
+        $original = $request = $this->grav['request'];
+        $request = $this->proccessMiddlewares($request, $this->middlewares);
+
+        if ($original === $request) {
+            return $this->bootFunctionArray($this->controllers, $request);
+        }
+
+        return $request;
+    }
+
+    function proccessMiddlewares(ServerRequest $request, array $middlewares, int $index = 0): mixed
+    {
+        if ($index >= count($middlewares)) {
+            return $request;
+        }
+
+        $next = function (ServerRequest $request) use ($middlewares, $index) {
+            // We call the next middleware on list
+            return $this->proccessMiddlewares($request, $middlewares, $index + 1);
+        };
+
+        // Execute the current middleware with the $next
+        return $this->bootFunction($middlewares[$index], $request, $next);
     }
 
     public function middleware(array|string|Controller|callable $middlewares): self
@@ -64,22 +87,28 @@ class Route
         return $this->path == $path;
     }
 
-    protected function bootFunctionArray(array $array): mixed
+    protected function bootFunction(mixed $function, ...$args)
+    {
+        if (is_array($function) && is_callable($function, true)) {
+            if (is_string($function[0])) {
+                $function[0] = new $function[0];
+            }
+            $callback = call_user_func($function, ...$args);
+        }
+        if (is_object($function)) {
+            $callback = $function(...$args);
+        }
+        if (is_string($function)) {
+            $callback = (new $function)(...$args);
+        }
+        return $callback;
+    }
+
+    protected function bootFunctionArray(array $array, ...$args): mixed
     {
         $callback = null;
         foreach ($array as $function) {
-            if (is_array($function) && is_callable($function, true)) {
-                if (is_string($function[0])) {
-                    $function[0] = new $function[0];
-                }
-                $callback = call_user_func($function, $this->grav['request']);
-            }
-            if (is_object($function)) {
-                $callback = $function($this->grav['request']);
-            }
-            if (is_string($function)) {
-                $callback = (new $function)($this->grav['request']);
-            }
+            $callback = $this->bootFunction($function, ...$args);
 
             if (!is_null($callback)) {
                 break;
@@ -92,6 +121,7 @@ class Route
     {
         if (is_array($middlewares)) {
             $this->middlewares = $middlewares;
+            return $this;
         }
 
         $this->middlewares = [$middlewares];

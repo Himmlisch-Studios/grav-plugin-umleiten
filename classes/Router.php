@@ -5,71 +5,99 @@ namespace Grav\Plugin\Umleiten;
 use Exception;
 use Grav\Common\Grav;
 use Grav\Common\Page\Interfaces\PageInterface;
+use Grav\Common\Page\Page;
+use Grav\Framework\Psr7\Response;
+use Psr\Http\Message\ServerRequestInterface;
 
 class Router
 {
-    protected Grav $grav;
+    protected static $instance;
 
-    public function __construct(protected array $routes = [])
+    protected Grav $grav;
+    protected bool $initialized;
+
+    protected array $routes = [];
+
+    public function __construct()
     {
         $this->grav = Grav::instance();
     }
 
-    private function addRoutes(array $routes)
+    public static function instance()
     {
-        $this->routes += $routes;
+        if (isset(self::$instance)) {
+            return self::$instance;
+        }
+
+        return self::$instance = new static();
     }
 
-    public static function init()
+    public function addMany(array $routes)
+    {
+        foreach ($routes as $route) {
+            $this->add($route);
+        }
+    }
+
+    public function add(Route $route): Route
+    {
+        if (!$this->initialized) {
+            throw new Exception("Router should be called after initilization");
+        }
+
+        return $this->routes[] = $route;
+    }
+
+    public static function init(): self
     {
         if (!isset(Grav::instance()['router'])) {
-            $router = new static();
-            Grav::instance()['router'] = $router;
+            Grav::instance()['router'] = $instance = self::instance();
+            $instance->initialized = true;
         }
+
+        return Grav::instance()['router'];
     }
 
-    public static function boot($root = null)
+    public function process()
     {
-        if (is_null($root)) {
-            $path = debug_backtrace()[0]['file'];
-            $root = str_replace(basename($path), '', $path);
-        }
+        $path = $this->grav['uri']->path();
+        $method = $this->grav['request']->getMethod();
 
-        $script = is_file($root) ? $root : DS . trim($root, DS) . DS . 'routes.php';
-
-        if (!file_exists($root)) {
-            throw new Exception("Couldn't find Routes file", 1);
-        }
-
-        self::init();
-
-        /** @var self */
-        $router = Grav::instance()['router'];
-        $router->addRoutes(include $script);
-
-        $path = $router->grav['uri']->path();
-        $method = $router->grav['request']->getMethod();
-
-        $found_route = null;
+        $fountRoute = null;
 
         /** @var Route */
-        foreach ($router->routes as $route) {
+        foreach ($this->routes as $route) {
             if ($route->is($path) && $route->of($method)) {
-                $found_route = $route;
+                $fountRoute = $route;
             }
         }
 
-        if (is_null($found_route)) {
+        if (is_null($fountRoute)) {
             return;
         }
 
-        /** @var Pages */
-        $pages = $router->grav['pages'];
+        $response = $fountRoute->boot();
 
-        $page = $found_route->boot();
+        if (is_null($response)) {
+            return;
+        }
 
-        if ($page instanceof PageInterface) {
-            $pages->addPage($page, $path);
+        $this->resolveResponse($response);
+    }
+
+    protected function resolveResponse(mixed $response)
+    {
+        if ($response instanceof Page) {
+            $path = $this->grav['uri']->path();
+            $response->route($path);
+            $this->grav['pages']->addPage($response, $path);
+        } else if ($response instanceof ServerRequestInterface) {
+            $this->grav['request'] = $response;
+        } else {
+            try {
+                $this->grav->close(new Response(200, [], (string) $response));
+            } catch (\Throwable $th) {
+            }
         }
     }
 }

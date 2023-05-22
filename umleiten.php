@@ -4,6 +4,7 @@ namespace Grav\Plugin;
 
 use Composer\Autoload\ClassLoader;
 use Grav\Common\Plugin;
+use Grav\Plugin\Umleiten\Router;
 
 /**
  * Class UmleitenPlugin
@@ -50,9 +51,24 @@ class UmleitenPlugin extends Plugin
             return;
         }
 
-        // Enable the main events we are interested in
         $this->enable([
-            // Put your main events here
+            'onTwigTemplatePaths' => ['onTwigTemplatePaths', 0],
+            'onPagesInitialized' => ['onRegisterRoutes', 0]
         ]);
+    }
+
+    public function onTwigTemplatePaths(): void
+    {
+        $this->grav['twig']->twig_paths[] = __DIR__ . '/templates';
+    }
+
+
+    public function onRegisterRoutes()
+    {
+        $router = Router::init();
+
+        $this->grav->fireEvent('onRegisterRoutes');
+
+        $router->process();
     }
 }

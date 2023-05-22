@@ -2,64 +2,83 @@
 
 namespace Grav\Plugin\Umleiten;
 
+use Exception;
 use Grav\Common\Grav;
 use Grav\Common\Page\Page;
 use Grav\Common\Page\Pages;
+use Grav\Common\Twig\Twig;
+use Illuminate\Support\Str;
+use Stringable;
 
-class View
+class View implements Stringable
 {
-    public static function make(string $view, ?string $template = null, ?string $page_path = null): ?Page
-    {
-        /** @var \RocketTheme\Toolbox\ResourceLocator */
-        $locator = Grav::instance()['locator'];
+    use WithViewMutators;
 
-        $path = str_replace('.', DS, $view);
-        $page_path = $page_path ? str_replace('.', DS, $page_path) : $path;
-        $trailPath = '/' . trim($path, '/');
-        $template = str_replace('.', DS, $template);
+    readonly string $path;
+    readonly protected Twig $twig;
+    readonly public string $extension;
 
-        $view_file = static::fileFinder(
-            $page_path . '.md',
-            ['theme://pages']
-        );
+    const DEFAULT_EXTENSION = '.html.twig';
 
-        if (is_null($view_file) || empty($view_file)) {
-            return static::error();
+    protected function __construct(
+        readonly public string $view,
+        readonly public ?string $overrideContent = null,
+        readonly public bool $dotPath = false,
+        readonly public array $data = [],
+        ?string $extension = null,
+    ) {
+        if (!is_null($extension)) {
+            $this->extension = $extension;
         }
 
-        $view_file = $locator->findResource(
-            $view_file,
-            true,
-            true
-        );
+        $this->twig = Grav::instance()['twig'];
 
-        $page = new Page();
+        if ($this->dotPath) {
+            $this->path = static::processDotPath($view);
 
-        /** @var Pages */
-        $pages = Grav::instance()['pages'];
-        $parent = $pages->find(str_replace($trailPath, '', $path));
+            if (!isset($this->extension)) {
+                $this->extension = static::DEFAULT_EXTENSION;
+            }
+        } else {
+            $this->path = $view;
 
-        if ($parent == null) {
-            $parent = $pages->find('/');
-            $parent->template('default');
+            if (!isset($this->extension)) {
+                $this->extension =  '.' . Str::after($view, '.');
+            }
         }
-
-        $page->parent($parent);
-
-        if (!empty($template)) {
-            $page->template($template);
-        }
-
-        $page->init(
-            new \SplFileInfo($view_file)
-        );
-
-        $page->route($path);
-        $page->slug(self::generateSlug($page->title()));
-        return $page;
     }
 
-    public static function page(string $route, ?string $template = null): ?Page
+    public static function make(string $view, array $data = []): static
+    {
+        return new static(
+            view: $view,
+            data: $data,
+            dotPath: !str_ends_with($view, '.twig') && !str_contains($view, DS),
+        );
+    }
+
+    /* ================
+     |   GETTTERS
+     ================== */
+
+    public function pathWithoutExtension()
+    {
+        return Str::before($this->path, $this->extension);
+    }
+
+    /* ================
+     |    HELPERS
+     ================== */
+
+    public static function json(array $content): page
+    {
+        return (new static(
+            view: 'default.json.twig',
+            data: ['content' => $content],
+        ))->asJson();
+    }
+
+    public static function route(string $route, ?string $template = null): ?Page
     {
         /** @var Pages */
         $pages = Grav::instance()['pages'];
@@ -72,43 +91,31 @@ class View
         return $page;
     }
 
-    public static function error()
-    {
-        $page = new Page();
-        $page->init(
-            new \SplFileInfo(
-                Grav::instance()['locator']->findResource(
-                    static::fileFinder('error.md', ['plugins://error/pages']),
-                    true,
-                    true
-                )
-            )
-        );
-        return $page;
-    }
-
     public static function redirect($route): Page
     {
-        $page = new Page();
+        $page = static::newPage();
         $page->redirect($route);
-        $page->init(
-            new \SplFileInfo(
-                Grav::instance()['locator']->findResource(
-                    static::fileFinder('default.md', ['theme://pages']),
-                    true,
-                    true
-                )
-            )
-        );
+        $page->init(static::defaultFile());
         return $page;
     }
 
-    private static function generateSlug(string $string)
+    /* ================
+     |   INTERNAL
+     ================== */
+
+    protected static function processDotPath($view)
+    {
+        $path = str_replace('.', DS, $view);
+
+        return ltrim($path, '/') . static::DEFAULT_EXTENSION;
+    }
+
+    protected static function generateSlug(string $string)
     {
         return str_replace(' ', '', preg_replace('/[^A-z0-9]/', '', strtolower($string)));
     }
 
-    private static function fileFinder(string $file, array $locations)
+    protected static function fileFinder(string $file, array $locations)
     {
         $return = '';
         foreach ($locations as $location) {
@@ -118,5 +125,44 @@ class View
             }
         }
         return $return;
+    }
+
+    protected static function newPage(): Page
+    {
+        $page = new Page;
+        $page->cacheControl(0);
+        $page->eTag(0);
+        $page->expires(0);
+
+        return $page;
+    }
+
+    protected static function defaultFile()
+    {
+        return new \SplFileInfo(
+            Grav::instance()['locator']->findResource(
+                static::fileFinder('default.md', ['theme://pages', 'plugins://umleiten/pages']),
+                true,
+                true
+            )
+        );
+    }
+
+    /* ================
+     |    MAGIC
+     ================== */
+
+    public function __invoke(): mixed
+    {
+        if (isset($this->overrideContent)) {
+            return $this->overrideContent;
+        }
+
+        return $this->twig->processTemplate($this->path, $this->data);
+    }
+
+    public function __toString(): string
+    {
+        return $this();
     }
 }

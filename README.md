@@ -46,67 +46,67 @@ Note that if you use the Admin Plugin, a file with your configuration named umle
 
 ## Usage
 
-Firstly, you must hook the `onPagesInitialized` event and call `Router::boot()`.
+
+Create routes listening for the `onRegisterRoutes` event.
 
 ```php
 public static function getSubscribedEvents()
 {
     return [
-        'onPagesInitialized' => ['onPagesInitialized', 0],
+        'onRegisterRoutes' => ['onRegisterRoutes', 0],
     ];
 }
 
-public function onPagesInitialized()
+public function onRegisterRoutes()
 {
-    \Grav\Plugin\Umleiten\Router::boot();
+    // Executed after onPagesInitialized. 
+    // You have access to Router::instance() and $this->grav['router'].
 }
 ```
 
-Now, you must create a `routes.php` file in the same folder path as the script where you're calling the boot.
-
-Once done, you can start creating routes, inside a returning array, in a similar fashion of many MVC Frameworks (although this particular way is based on [Laravel](https://github.com/laravel/framework)).
+We create routes in a similar fashion of many MVC Frameworks. But this particular way is based on [Laravel](https://github.com/laravel/framework).
 
 ```php
-<?php // user/themes/mytheme/routes.php
-
 use Grav\Plugin\Umleiten\Route;
 use Grav\Plugin\Umleiten\View;
 use Grav\Theme\Controllers\AuthController;
 use Grav\Theme\Controllers\TeamController;
 use Grav\Theme\Middlewares\AuthMiddleware;
 
-return [
+public function onRegisterRoutes()
+{
     Route::get('/app', function () {
         return View::make('app');
-    })->middleware(AuthMiddleware::class),
+    })->middleware(AuthMiddleware::class);
 
     Route::get('/app/logout', [AuthController::class, 'logout'])
-        ->middleware(AuthMiddleware::class),
+        ->middleware(AuthMiddleware::class);
 
     Route::get('/app/signin', function () {
         return View::make('signin');
-    }),
-    Route::post('/app/signin', [AuthController::class, 'login']),
+    });
+    Route::post('/app/signin', [AuthController::class, 'login']);
 
     Route::get('/app/signup', function () {
         return View::make('signup');
-    }),
-    Route::post('/app/signup', [AuthController::class, 'register']),
+    });
+    Route::post('/app/signup', [AuthController::class, 'register']);
 
-    Route::get('/app/teams/create', [TeamController::class, 'create']),
-    Route::post('/app/teams/create', [TeamController::class, 'store']),
-];
+    Route::get('/app/teams/create', [TeamController::class, 'create']);
+    Route::post('/app/teams/create', [TeamController::class, 'store']);
+}
 ```
 
-As you could see, the plugin comes with some static class helpers such as `Grav\Plugin\Umleiten\View` to make the code more abstract.
+We declare routes using `Grav\Plugin\Umleiten\Route` and passing a controller. The controllar can be a function array, a Closure or an invokable class.
 
-Example of middleware:
+We can also declare Middlewares to modify the request or intercept it.
 
 ```php
 <?php
 
 namespace Grav\Theme\Middlewares;
 
+use Closure;
 use Grav\Common\Grav;
 use Nyholm\Psr7\ServerRequest;
 use Grav\Common\Page\Page;
@@ -115,19 +115,117 @@ use Grav\Plugin\Umleiten\View;
 
 class AuthMiddleware extends Middleware
 {
-    function __invoke(ServerRequest $request): ?Page
+    function __invoke(ServerRequest $request, Closure $next): Mixed
     {
         /** @var Session */
         $session = Grav::instance()['session'];
         $value = $session->__get('some_custom_value');
 
         if (is_null($value)) {
-            return View::redirect('/app/signin'); // Return a view to intercept the process
+            // Return anything diferent to `ServerRequest` to intercept the process
+            return View::redirect('/app/signin');
         }
 
-        return null; // Return null to continue the process
+        return $next($request); // Continue to the next Middleware
     }
 }
+```
+
+At the end of `onRegisterRoutes`, the `Router` will try to find a match for the current `$request`.
+
+If a `Route` is matched by the `$request`, it will be **booted** and will execute its Middlewares in order, passing the `$request` for possible mutations.
+
+If the `$request` is still a `ServerRequest` at the end of the Middlewares execution, it will be passed in to the Controller. Otherwise it will return a `$response`.
+
+At the end of the `Router` process, the `$response` will try to be solved depending its type:
+
+- `Grav\Common\Page\Page`: Will force Grav to process the page on that route.
+- `Psr\Http\Message\ServerRequestInterface`: Will set `$this->grav['request']` as it.
+- Anything else will tried to be output directly as string.
+
+If the `$response` was null or gave an error on output, the Route will be ignored, and the Grav process will continue.
+
+---
+
+As you could see, the plugin comes with a static class `View` with a bunch of helpers to make the code more abstract.
+
+We can create a View by passing a twig template and data directly to it.
+
+```php
+$template = 'some_registered_template.html.twig';
+View::make($template, [
+    'myData' => [0,1,2,3]
+]);
+```
+
+`View` implements `Stringable`, so if we return a `View` directly through a `Route`, it will be processed and output as HTML string.
+
+However, we may want to still take advantage of Frontmatter and the Grav Page Processor.
+
+For this, we want to return a `Page` using one of the following methods:
+
+- `withPage($pagePath)`: Processes the template with the path of a file given (Normally an `.md`)
+- `asPage()`: Processes the template with the file corresponding to the same path as the template
+- `asJson()`: Processes the template and then the output is passed to an empty JSON page.
+- `withJsonPage($pagePath)`: Same as `withPage` but tries to force the `template` and `language` to JSON.
+- `asJsonPage()`: Same as `asPage` but tries to force the `template` and `language` to JSON.
+
+**Example:**
+
+`theme/pages/signin.md`:
+
+```
+---
+title: Sign In
+cache_enable: false
+
+form:
+  name: login
+
+  fields:
+    email:
+      label: Email
+      placeholder: Enter your email address
+      type: email
+      validate:
+        required: true
+    password:
+      label: Password
+      type: password
+      validate:
+        required: true
+  buttons:
+    submit:
+      type: submit
+      value: Submit
+    reset:
+      type: reset
+      value: Reset
+---
+
+# Sign In
+```
+
+`theme/templates/signin.html.twig`:
+
+```twig
+{% extends 'partials/base.html.twig' %}
+
+
+{% block body %}
+    <div class="signin-form">
+        {{ page.content|raw }}
+        {% include "forms/form.html.twig" %}
+    </div>
+{% endblock %}
+```
+
+Then inside `onRegisterRoutes`:
+
+```php
+Route::get('/app/signin', function () {
+    return View::make('signin')->asPage();
+});
 ```
 
 ## Need a website?

@@ -2,9 +2,19 @@
 
 namespace Grav\Plugin\Umleiten;
 
+/**
+ * @property mixed $middlewares
+ */
 abstract class Controller
 {
-    protected $middlewares = [];
+    public static function middlewares(): array
+    {
+        if (property_exists(static::class, 'middlewares')) {
+            return static::$middlewares;
+        }
+
+        return [];
+    }
 
     /* 
     * EXAMPLE

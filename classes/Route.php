@@ -2,6 +2,7 @@
 
 namespace Grav\Plugin\Umleiten;
 
+use Closure;
 use Exception;
 use Grav\Common\Grav;
 use Nyholm\Psr7\ServerRequest;
@@ -39,32 +40,9 @@ class Route
             ->setMethod('post');
     }
 
-    public function boot(): mixed
-    {
-        $original = $request = $this->grav['request'];
-        $request = $this->proccessMiddlewares($request, $this->middlewares);
-
-        if ($request instanceof $original) {
-            return $this->bootFunctionArray($this->controllers, $request);
-        }
-
-        return $request;
-    }
-
-    function proccessMiddlewares(ServerRequest $request, array $middlewares, int $index = 0): mixed
-    {
-        if ($index >= count($middlewares)) {
-            return $request;
-        }
-
-        $next = function (ServerRequest $request) use ($middlewares, $index) {
-            // We call the next middleware on list
-            return $this->proccessMiddlewares($request, $middlewares, $index + 1);
-        };
-
-        // Execute the current middleware with the $next
-        return $this->bootFunction($middlewares[$index], $request, $next);
-    }
+    /* ================
+     |   SETTERS
+     ================== */
 
     public function middleware(array|string|Controller|callable $middlewares): self
     {
@@ -75,6 +53,10 @@ class Route
     {
         return $this->setControllers($controllers);
     }
+
+    /* ================
+     |    HELPERS
+     ================== */
 
     public function of($method): bool
     {
@@ -87,7 +69,66 @@ class Route
         return $this->path == $path;
     }
 
-    protected function bootFunction(mixed $function, ...$args)
+    /* ================
+     |   INTERNAL
+     ================== */
+
+    public function boot(): mixed
+    {
+        $middlewares = $this->middlewares;
+
+        return $this->processRequest($this->grav['request'], $middlewares, function ($request, ...$args) {
+            return $this->proccessControllers($this->controllers, $request);
+        });
+    }
+
+    protected function processRequest($request, array $middlewares, Closure $callback)
+    {
+        $original = $request;
+        $request = $this->proccessMiddlewares($request, $middlewares);
+
+        if ($request instanceof $original) {
+            return $callback($request);
+        }
+
+        return $request;
+    }
+
+    protected function proccessControllers(array $array, $request, ...$args): mixed
+    {
+        $callback = null;
+        foreach ($array as $function) {
+            $callback = $this->processRequest(
+                $request,
+                $this->controllerMiddlewares($function),
+                function ($request) use ($function, $args) {
+                    return $this->executeFunction($function, $request, ...$args);
+                }
+            );
+
+            if (!is_null($callback)) {
+                break;
+            }
+        }
+        return $callback;
+    }
+
+    protected function proccessMiddlewares(ServerRequest $request, array $middlewares, int $index = 0): mixed
+    {
+        if ($index >= count($middlewares)) {
+            return $request;
+        }
+
+        $next = function (ServerRequest $request) use ($middlewares, $index) {
+            // We call the next middleware on list
+            return $this->proccessMiddlewares($request, $middlewares, $index + 1);
+        };
+
+        // Execute the current middleware with the $next
+        return $this->executeFunction($middlewares[$index], $request, $next);
+    }
+
+    protected function executeFunction(mixed $function, ...$args)
     {
         if (is_array($function) && is_callable($function, true)) {
             if (is_string($function[0])) {
@@ -104,17 +145,23 @@ class Route
         return $callback;
     }
 
-    protected function bootFunctionArray(array $array, ...$args): mixed
+    protected function controllerMiddlewares($controller): array
     {
-        $callback = null;
-        foreach ($array as $function) {
-            $callback = $this->bootFunction($function, ...$args);
-
-            if (!is_null($callback)) {
-                break;
-            }
+        $object = null;
+        if (is_object($controller)) {
+            $object = $controller;
         }
-        return $callback;
+
+        if (is_array($controller)) {
+            $object = $controller[0];
+        }
+
+        if ($object && method_exists($object, 'middlewares')) {
+            $middlewares = $object::middlewares();
+
+            return $middlewares;
+        }
+        return [];
     }
 
     protected function setMiddlewares(array|string|Middleware|callable $middlewares): self
